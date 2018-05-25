@@ -14,7 +14,6 @@ from flask_sqlalchemy import SQLAlchemy
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URL'] = 'sqlite:///' + os.path.join(basedir, 'data.sqlite')
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
@@ -23,12 +22,13 @@ bootstrap = Bootstrap(app)
 moment = Moment(app)
 db = SQLAlchemy(app)
 
+
 class Role(db.Model):
 	"""定义Role模型"""
 	__tablename__ = 'roles'
 	id = db.Column(db.Integer, primary_key=True)
 	name = db.Column(db.String(64), unique=True)
-	users = db.relationship('User', backref='role')
+	users = db.relationship('User', backref='role', lazy='dynamic')
 
 	def __repr__(self):
 		return '<Role %r>' % self.name
@@ -44,23 +44,30 @@ class User(db.Model):
 	def __repr__(self):
 		return '<User %r>' % self.username
 
+
 class NameForm(FlaskForm):
 	"""表单类"""
 	name = StringField('What is your name?', validators=[DataRequired()])
 	submit = SubmitField('Submit')
 
 
-
 @app.route('/', methods=['get', 'post'])
 def index():
 	form = NameForm()
 	if form.validate_on_submit():
-		old_name = session['name']
-		if old_name is not None and old_name != form.name.data:
-			flash('Looks like you have changed your name!')
+		user = User.query.filter_by(username=form.name.data).first()
+		if user is None:
+			user = User(username=form.name.data)
+			db.session.add(user)
+			session['known'] = False
+		else:
+			session['known'] = True
 		session['name'] = form.name.data
+		form.name.data = ''
 		return redirect(url_for('index'))
-	return render_template('index.html', current_time=datetime.utcnow(), form=form, name=session['name'])
+	return render_template('index.html', current_time=datetime.utcnow(),
+						   form=form, name=session.get('name'),
+						   known=session.get('known', False))
 
 
 @app.route('/user/<name>')
@@ -79,4 +86,4 @@ def internal_server_error(e):
 
 
 if __name__ == '__main__':
-	app.run(debug=True, port=5001)
+	app.run(debug=True, port=5000)
