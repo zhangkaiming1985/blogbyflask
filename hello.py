@@ -15,8 +15,9 @@ from flask_sqlalchemy import SQLAlchemy
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URL'] = 'sqlite:///' + os.path.join(basedir, 'data.sqlite')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'data.sqlite') #三斜杠为相对路径，四斜杠为绝对路径
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'hard to guess'
 bootstrap = Bootstrap(app)
 moment = Moment(app)
@@ -55,6 +56,7 @@ class NameForm(FlaskForm):
 def index():
 	form = NameForm()
 	if form.validate_on_submit():
+		print(app.config['SQLALCHEMY_DATABASE_URL'])
 		user = User.query.filter_by(username=form.name.data).first()
 		if user is None:
 			user = User(username=form.name.data)
