@@ -11,17 +11,28 @@ from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired
 
 from flask_sqlalchemy import SQLAlchemy
+from flask_script import Manager, Shell
+from flask_migrate import Migrate, MigrateCommand
+
+from flask_mail import Mail, Message
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'data.sqlite') #三斜杠为相对路径，四斜杠为绝对路径
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'data.sqlite')  # 三斜杠为相对路径，四斜杠为绝对路径
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'hard to guess'
+app.config['FLASKY_MAIL_SUBJECT_PREFIX'] = ['Flasky']
+app.config['FLASKY_MAIL_SENDER'] = 'Flasky Admin <flasky@example.com>'
+app.config['FLASKY_ADMIN'] = os.environ.get('FLASKY_ADMIN')
+manager = Manager(app)
 bootstrap = Bootstrap(app)
 moment = Moment(app)
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+manager.add_command('db', MigrateCommand)
+mail = Mail(app)
 
 
 class Role(db.Model):
@@ -52,16 +63,33 @@ class NameForm(FlaskForm):
 	submit = SubmitField('Submit')
 
 
+def make_shell_context():
+	return dict(app=app, db=db, User=User, Role=Role)
+
+
+manager.add_command("shell", Shell(make_context=make_shell_context))
+
+
+def send_email(to, subject, template, **kwargs):
+	msg = Message(app.config['FLASKY_MAIL_SUBJECT_PREFIX'] + subject,
+				  sender=app.config['FLASKY_MAIL_SENDER'], recipients=[to])
+	msg.body = render_template(template + '.txt', **kwargs)
+	msg.html = render_template(template + '.html', **kwargs)
+	mail.send(msg)
+
+
 @app.route('/', methods=['get', 'post'])
 def index():
 	form = NameForm()
 	if form.validate_on_submit():
-		print(app.config['SQLALCHEMY_DATABASE_URL'])
 		user = User.query.filter_by(username=form.name.data).first()
 		if user is None:
 			user = User(username=form.name.data)
 			db.session.add(user)
 			session['known'] = False
+			if app.config['FLASKY_ADMIN']:
+				send_email(app.config['FLASKY_ADMIN'], 'New User',
+						   'mail/new_user', user=user)
 		else:
 			session['known'] = True
 		session['name'] = form.name.data
@@ -88,4 +116,4 @@ def internal_server_error(e):
 
 
 if __name__ == '__main__':
-	app.run(debug=True, port=5000)
+	manager.run()
